@@ -43,6 +43,13 @@
             
             <div class="space-y-4">
                 <div>
+                    <label class="block text-sm font-semibold text-slate-600 mb-1.5">量測日期</label>
+                    <div class="relative">
+                        <input type="date" id="measureDate" class="w-full text-base px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-400 focus:bg-white text-slate-700 font-medium">
+                    </div>
+                </div>
+
+                <div>
                     <label class="block text-sm font-semibold text-slate-600 mb-1.5">量測時段</label>
                     <div class="grid grid-cols-3 gap-2">
                         <button type="button" id="btnAM" onclick="setPeriod('AM')" class="py-2.5 rounded-xl border-2 border-amber-400 bg-amber-50 text-amber-700 font-bold text-xs transition-all shadow-sm">
@@ -98,22 +105,29 @@
         let chartInstance = null;
 
         document.addEventListener('DOMContentLoaded', () => {
+            // 預設日期設定為今天
+            const today = new Date();
+            const yyyy = today.getFullYear();
+            const mm = String(today.getMonth() + 1).padStart(2, '0');
+            const dd = String(today.getDate()).padStart(2, '0');
+            document.getElementById('measureDate').value = `${yyyy}-${mm}-${dd}`;
+            
+            // 限制日期最大只能選擇今天（不能預測未來血壓）
+            document.getElementById('measureDate').max = `${yyyy}-${mm}-${dd}`;
+
             loadRecords();
         });
 
-        // 升級：切換三個時段的樣式控制
         function setPeriod(period) {
             currentPeriod = period;
             const btnAM = document.getElementById('btnAM');
             const btnNOON = document.getElementById('btnNOON');
             const btnPM = document.getElementById('btnPM');
             
-            // 先重設所有人為未選取樣式
             btnAM.className = "py-2.5 rounded-xl border-2 border-slate-200 bg-slate-50 text-slate-500 font-bold text-xs transition-all";
             btnNOON.className = "py-2.5 rounded-xl border-2 border-slate-200 bg-slate-50 text-slate-500 font-bold text-xs transition-all";
             btnPM.className = "py-2.5 rounded-xl border-2 border-slate-200 bg-slate-50 text-slate-500 font-bold text-xs transition-all";
             
-            // 根據選取的時段給予專屬高亮顏色
             if(period === 'AM') {
                 btnAM.className = "py-2.5 rounded-xl border-2 border-amber-400 bg-amber-50 text-amber-700 font-bold text-xs transition-all shadow-sm";
             } else if(period === 'NOON') {
@@ -124,18 +138,27 @@
         }
 
         function saveRecord() {
+            const dateValue = document.getElementById('measureDate').value;
             const sys = parseInt(document.getElementById('sys').value);
             const dia = parseInt(document.getElementById('dia').value);
             const pulse = parseInt(document.getElementById('pulse').value);
 
-            if (!sys || !dia || !pulse) {
-                alert('請完整填寫數據哦！');
+            if (!dateValue || !sys || !dia || !pulse) {
+                alert('請完整填寫日期與數據哦！');
                 return;
             }
 
-            const now = new Date();
-            const dateStr = `${now.getMonth()+1}/${now.getDate()}`;
-            const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+            // 解析選擇的日期格式 (YYYY-MM-DD -> MM/DD)
+            const dateParts = dateValue.split('-');
+            const dateStr = `${parseInt(dateParts[1])}/${parseInt(dateParts[2])}`;
+            
+            // 補登如果是過去日期，時間欄位顯示「補登」，若是當天則抓當前時間
+            const todayStr = new Date().toISOString().split('T')[0];
+            let timeStr = "補登";
+            if (dateValue === todayStr) {
+                const now = new Date();
+                timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+            }
 
             let status = { text: '正常', color: 'bg-emerald-500' };
             if (sys >= 140 || dia >= 90) {
@@ -144,12 +167,31 @@
                 status = { text: '偏高', color: 'bg-amber-500' };
             }
 
-            const record = { sys, dia, pulse, date: dateStr, time: timeStr, period: currentPeriod, status };
+            // 新增 rawDate 用於後續的時間排序
+            const record = { 
+                sys, dia, pulse, 
+                date: dateStr, 
+                time: timeStr, 
+                period: currentPeriod, 
+                status,
+                rawDate: dateValue // 用於精準排序
+            };
 
-            let records = JSON.parse(localStorage.getItem('bpRecordsV2')) || [];
-            records.unshift(record);
-            localStorage.setItem('bpRecordsV2', JSON.stringify(records));
+            let records = JSON.parse(localStorage.getItem('bpRecordsV3')) || [];
+            records.push(record);
 
+            // 核心修正：根據量測日期(由新到舊)與時段進行排序，確保歷史清單與圖表不會因為補登而錯亂
+            const periodOrder = { 'AM': 1, 'NOON': 2, 'PM': 3 };
+            records.sort((a, b) => {
+                if (b.rawDate !== a.rawDate) {
+                    return b.rawDate.localeCompare(a.rawDate);
+                }
+                return periodOrder[b.period] - periodOrder[a.period];
+            });
+
+            localStorage.setItem('bpRecordsV3', JSON.stringify(records));
+
+            // 清空數據輸入，但保留日期供連續輸入
             document.getElementById('sys').value = '';
             document.getElementById('dia').value = '';
             document.getElementById('pulse').value = '';
@@ -158,7 +200,7 @@
         }
 
         function loadRecords() {
-            const records = JSON.parse(localStorage.getItem('bpRecordsV2')) || [];
+            const records = JSON.parse(localStorage.getItem('bpRecordsV3')) || [];
             renderList(records);
             renderChart(records);
         }
@@ -171,7 +213,6 @@
             }
 
             container.innerHTML = records.map((r, index) => {
-                // 判斷標籤與顏色
                 let periodTag = '☀️ 早上';
                 let tagClass = 'text-amber-600 bg-amber-50';
                 if(r.period === 'NOON') {
@@ -218,9 +259,8 @@
                 const limit = parseInt(range);
                 displayRecords = displayRecords.slice(0, limit);
             }
-            displayRecords.reverse();
+            displayRecords.reverse(); // 圖表從舊到新
 
-            // 升級：圖表 X 軸標籤支援「早、中、晚」對應
             const labels = displayRecords.map(r => {
                 let pText = '早';
                 if(r.period === 'NOON') pText = '中';
@@ -275,15 +315,15 @@
         }
 
         function deleteRecord(index) {
-            let records = JSON.parse(localStorage.getItem('bpRecordsV2')) || [];
+            let records = JSON.parse(localStorage.getItem('bpRecordsV3')) || [];
             records.splice(index, 1);
-            localStorage.setItem('bpRecordsV2', JSON.stringify(records));
+            localStorage.setItem('bpRecordsV3', JSON.stringify(records));
             loadRecords();
         }
 
         function clearAllRecords() {
             if (confirm('確定要清空所有的紀錄嗎？')) {
-                localStorage.removeItem('bpRecordsV2');
+                localStorage.removeItem('bpRecordsV3');
                 loadRecords();
             }
         }
