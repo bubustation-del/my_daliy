@@ -44,12 +44,15 @@
             <div class="space-y-4">
                 <div>
                     <label class="block text-sm font-semibold text-slate-600 mb-1.5">量測時段</label>
-                    <div class="grid grid-cols-2 gap-2">
-                        <button type="button" id="btnAM" onclick="setPeriod('AM')" class="py-2.5 rounded-xl border-2 border-amber-400 bg-amber-50 text-amber-700 font-bold text-sm transition-all shadow-sm">
-                            <i class="fa-solid fa-sun mr-1.5"></i>早上 (起床後)
+                    <div class="grid grid-cols-3 gap-2">
+                        <button type="button" id="btnAM" onclick="setPeriod('AM')" class="py-2.5 rounded-xl border-2 border-amber-400 bg-amber-50 text-amber-700 font-bold text-xs transition-all shadow-sm">
+                            <i class="fa-solid fa-sun mr-1"></i>早上
                         </button>
-                        <button type="button" id="btnPM" onclick="setPeriod('PM')" class="py-2.5 rounded-xl border-2 border-slate-200 bg-slate-50 text-slate-500 font-bold text-sm transition-all">
-                            <i class="fa-solid fa-moon mr-1.5"></i>晚上 (睡前)
+                        <button type="button" id="btnNOON" onclick="setPeriod('NOON')" class="py-2.5 rounded-xl border-2 border-slate-200 bg-slate-50 text-slate-500 font-bold text-xs transition-all">
+                            <i class="fa-solid fa-cloud-sun mr-1"></i>中午
+                        </button>
+                        <button type="button" id="btnPM" onclick="setPeriod('PM')" class="py-2.5 rounded-xl border-2 border-slate-200 bg-slate-50 text-slate-500 font-bold text-xs transition-all">
+                            <i class="fa-solid fa-moon mr-1"></i>晚上
                         </button>
                     </div>
                 </div>
@@ -98,17 +101,25 @@
             loadRecords();
         });
 
+        // 升級：切換三個時段的樣式控制
         function setPeriod(period) {
             currentPeriod = period;
             const btnAM = document.getElementById('btnAM');
+            const btnNOON = document.getElementById('btnNOON');
             const btnPM = document.getElementById('btnPM');
             
+            // 先重設所有人為未選取樣式
+            btnAM.className = "py-2.5 rounded-xl border-2 border-slate-200 bg-slate-50 text-slate-500 font-bold text-xs transition-all";
+            btnNOON.className = "py-2.5 rounded-xl border-2 border-slate-200 bg-slate-50 text-slate-500 font-bold text-xs transition-all";
+            btnPM.className = "py-2.5 rounded-xl border-2 border-slate-200 bg-slate-50 text-slate-500 font-bold text-xs transition-all";
+            
+            // 根據選取的時段給予專屬高亮顏色
             if(period === 'AM') {
-                btnAM.className = "py-2.5 rounded-xl border-2 border-amber-400 bg-amber-50 text-amber-700 font-bold text-sm transition-all shadow-sm";
-                btnPM.className = "py-2.5 rounded-xl border-2 border-slate-200 bg-slate-50 text-slate-500 font-bold text-sm transition-all";
-            } else {
-                btnAM.className = "py-2.5 rounded-xl border-2 border-slate-200 bg-slate-50 text-slate-500 font-bold text-sm transition-all";
-                btnPM.className = "py-2.5 rounded-xl border-2 border-blue-500 bg-blue-50 text-blue-700 font-bold text-sm transition-all shadow-sm";
+                btnAM.className = "py-2.5 rounded-xl border-2 border-amber-400 bg-amber-50 text-amber-700 font-bold text-xs transition-all shadow-sm";
+            } else if(period === 'NOON') {
+                btnNOON.className = "py-2.5 rounded-xl border-2 border-emerald-500 bg-emerald-50 text-emerald-700 font-bold text-xs transition-all shadow-sm";
+            } else if(period === 'PM') {
+                btnPM.className = "py-2.5 rounded-xl border-2 border-blue-500 bg-blue-50 text-blue-700 font-bold text-xs transition-all shadow-sm";
             }
         }
 
@@ -160,14 +171,24 @@
             }
 
             container.innerHTML = records.map((r, index) => {
-                const isAM = r.period === 'AM';
+                // 判斷標籤與顏色
+                let periodTag = '☀️ 早上';
+                let tagClass = 'text-amber-600 bg-amber-50';
+                if(r.period === 'NOON') {
+                    periodTag = '⛅ 中午';
+                    tagClass = 'text-emerald-600 bg-emerald-50';
+                } else if(r.period === 'PM') {
+                    periodTag = '🌙 晚上';
+                    tagClass = 'text-blue-600 bg-blue-50';
+                }
+
                 return `
                 <div class="bg-white p-3.5 rounded-xl shadow-sm border border-slate-100 flex justify-between items-center">
                     <div>
                         <div class="flex items-center space-x-2 text-xs text-slate-400 mb-1">
                             <span><i class="fa-regular fa-clock mr-1"></i>${r.date} ${r.time}</span>
-                            <span class="${isAM ? 'text-amber-600 bg-amber-50' : 'text-blue-600 bg-blue-50'} px-1.5 py-0.5 rounded font-bold text-[10px]">
-                                ${isAM ? '☀️ 早上' : '🌙 晚上'}
+                            <span class="${tagClass} px-1.5 py-0.5 rounded font-bold text-[10px]">
+                                ${periodTag}
                             </span>
                         </div>
                         <div class="flex items-baseline space-x-2">
@@ -188,24 +209,25 @@
             }).join('');
         }
 
-        // 升級：支援區間選擇的圖表渲染
         function renderChart(records) {
             const ctx = document.getElementById('bpChart').getContext('2d');
-            
-            // 讀取當前選擇的顯示區間（7, 14, 30 或 all）
             const range = document.getElementById('rangeSelect').value;
             
-            // 根據選擇的區間擷取資料量
             let displayRecords = [...records];
             if (range !== 'all') {
                 const limit = parseInt(range);
                 displayRecords = displayRecords.slice(0, limit);
             }
-            
-            // 將資料反轉，讓圖表符合時間軸（由舊到新，左到右）
             displayRecords.reverse();
 
-            const labels = displayRecords.map(r => `${r.date} (${r.period === 'AM' ? '早' : '晚'})`);
+            // 升級：圖表 X 軸標籤支援「早、中、晚」對應
+            const labels = displayRecords.map(r => {
+                let pText = '早';
+                if(r.period === 'NOON') pText = '中';
+                if(r.period === 'PM') pText = '晚';
+                return `${r.date} (${pText})`;
+            });
+            
             const sysData = displayRecords.map(r => r.sys);
             const diaData = displayRecords.map(r => r.dia);
 
@@ -225,7 +247,7 @@
                             backgroundColor: 'rgba(244, 63, 94, 0.1)',
                             borderWidth: 2.5,
                             tension: 0.2,
-                            pointRadius: displayRecords.length > 20 ? 1 : 3 // 資料多時縮小點點，畫面才不擁擠
+                            pointRadius: displayRecords.length > 20 ? 1 : 3
                         },
                         {
                             label: '舒張壓 (低壓)',
